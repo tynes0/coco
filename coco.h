@@ -4,60 +4,95 @@
 #include <thread>
 #include <iostream>
 #include <fstream>
+#include <numeric>
+#include <cassert>
+#include <unordered_map>
 
 namespace sch = std::chrono;
+
+#ifdef _DEBUG
+#define COCO_ASSERT(condition, message)																\
+    do																								\
+    {																								\
+        if (!(condition))																			\
+        {																							\
+            std::cerr << "Assertion failed: " << #condition << " (" << message << ")" << std::endl; \
+            std::cerr << "File: " << __FILE__ << ", Line: " << __LINE__ << std::endl;				\
+            std::abort();																			\
+        }																							\
+    } while (false)
+#endif // _DEBUG
 
 namespace coco
 {
 	using clock_t = sch::high_resolution_clock;
-
-	struct nanoseconds
+	namespace time_units
 	{
-		using type = sch::nanoseconds;
-		static constexpr const char* name = "nanoseconds";
-	};
+		struct nanoseconds
+		{
+			using type = sch::nanoseconds;
+			static constexpr const char* name = "nanoseconds";
+		};
 
-	struct microseconds
-	{
-		using type = sch::microseconds;
-		static constexpr const char* name = "microseconds";
-	};
+		struct microseconds
+		{
+			using type = sch::microseconds;
+			static constexpr const char* name = "microseconds";
+		};
 
-	struct milliseconds
-	{
-		using type = sch::milliseconds;
-		static constexpr const char* name = "milliseconds";
-	};
+		struct milliseconds
+		{
+			using type = sch::milliseconds;
+			static constexpr const char* name = "milliseconds";
+		};
 
-	struct seconds
-	{
-		using type = sch::seconds;
-		static constexpr const char* name = "seconds";
-	};
+		struct seconds
+		{
+			using type = sch::seconds;
+			static constexpr const char* name = "seconds";
+		};
 
-	struct minutes
-	{
-		using type = sch::minutes;
-		static constexpr const char* name = "minutes";
-	};
+		struct minutes
+		{
+			using type = sch::minutes;
+			static constexpr const char* name = "minutes";
+		};
 
-	struct hours
-	{
-		using type = sch::hours;
-		static constexpr const char* name = "hours";
-	};
+		struct hours
+		{
+			using type = sch::hours;
+			static constexpr const char* name = "hours";
+		};
+	}
 
-	struct profile_result
+#ifdef __cpp_concepts
+	namespace detail
 	{
-		std::string name;
-		long long start, end;
-		size_t threadID;
-	};
+		template <class dur>
+		concept duration_type = std::_Is_any_of_v<dur, coco::time_units::nanoseconds, coco::time_units::microseconds, coco::time_units::milliseconds, coco::time_units::seconds, coco::time_units::minutes, coco::time_units::hours>;
+	}
 
-	struct instrumentation_session
+#define _COCO_ENABLE_IF_DURATION_T(dur)
+#define _COCO_CONCEPT_DURATION_T detail::duration_type
+#else // __cpp_concepts
+#define _COCO_ENABLE_IF_DURATION_T(dur) , std::enable_if_t<std::_Is_any_of_v<dur, coco::time_units::nanoseconds, coco::time_units::microseconds, coco::time_units::milliseconds, coco::time_units::seconds, coco::time_units::minutes, coco::time_units::hours>, int> = 0
+#define _COCO_CONCEPT_DURATION_T class
+#endif // __cpp_concepts
+
+	namespace detail
 	{
-		std::string m_name;
-	};
+		struct profile_result
+		{
+			std::string name;
+			long long start, end;
+			size_t threadID;
+		};
+
+		struct instrumentation_session
+		{
+			std::string m_name;
+		};
+	}
 
 	class instrumentor
 	{
@@ -68,7 +103,7 @@ namespace coco
 		{
 			m_output_stream.open(filepath);
 			write_header();
-			m_current_session = new instrumentation_session{ name };
+			m_current_session = new detail::instrumentation_session{ name };
 			m_active = true;
 		}
 
@@ -82,7 +117,7 @@ namespace coco
 			m_active = false;
 		}
 
-		void write_profile(const profile_result& result)
+		void write_profile(const detail::profile_result& result)
 		{
 			if (m_profile_count++ > 0)
 				m_output_stream << ",";
@@ -120,27 +155,13 @@ namespace coco
 		}
 
 	private:
-		instrumentation_session* m_current_session;
+		detail::instrumentation_session* m_current_session;
 		std::ofstream m_output_stream;
 		int m_profile_count;
 		bool m_active;
 	};
 
-#ifdef __cpp_concepts
-	namespace detail
-	{
-		template <class dur>
-		concept duration_type = std::_Is_any_of_v<dur, coco::nanoseconds, coco::microseconds, coco::milliseconds, coco::seconds, coco::minutes, coco::hours>;
-	}
-
-#define _COCO_ENABLE_IF_DURATION_T(dur)
-#define _COCO_CONCEPT_DURATION_T detail::duration_type
-#else // __cpp_concepts
-#define _COCO_ENABLE_IF_DURATION_T(dur) , std::enable_if_t<std::_Is_any_of_v<dur, coco::nanoseconds, coco::microseconds, coco::milliseconds, coco::seconds, coco::minutes, coco::hours>, int> = 0
-#define _COCO_CONCEPT_DURATION_T class
-#endif // __cpp_concepts
-
-	template <_COCO_CONCEPT_DURATION_T _Duration = coco::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+	template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
 	class timer
 	{
 	public:
@@ -156,10 +177,13 @@ namespace coco
 
 		void start()
 		{
-			m_time = 0;
-			m_paused = false;
-			m_stopped = false;
-			m_timepoint = now();
+			if (m_stopped)
+			{
+				m_time = 0;
+				m_paused = false;
+				m_stopped = false;
+				m_timepoint = now();
+			}
 		}
 
 		void pause()
@@ -184,9 +208,9 @@ namespace coco
 
 		void reset()
 		{
-			m_time		= 0;
-			m_paused	= false;
-			m_stopped	= false;
+			m_time = 0;
+			m_paused = false;
+			m_stopped = false;
 			m_timepoint = now();
 		}
 
@@ -196,7 +220,7 @@ namespace coco
 			{
 				m_stopped = true;
 				long long start = tp_cast(m_timepoint).time_since_epoch().count();
-				long long end	= tp_cast(now()).time_since_epoch().count();
+				long long end = tp_cast(now()).time_since_epoch().count();
 
 				m_time += (end - start);
 				if (m_print_when_stopped)
@@ -209,6 +233,16 @@ namespace coco
 			if (!m_stopped)
 				return false;
 			return time >= m_time;
+		}
+
+		bool is_running() const noexcept
+		{
+			return !m_stopped;
+		}
+
+		bool is_paused() const noexcept
+		{
+			return m_paused;
 		}
 
 		void set_print_state(bool state)
@@ -239,17 +273,16 @@ namespace coco
 
 		sch::time_point<clock_t> m_timepoint;
 		std::string m_name;
-		long long m_time			= 0;
-		bool m_stopped				= false;
-		bool m_paused				= false;
-		bool m_print_when_stopped	= true;
+		long long m_time = 0;
+		bool m_stopped = false;
+		bool m_paused = false;
+		bool m_print_when_stopped = true;
 	};
 
-	template <_COCO_CONCEPT_DURATION_T _Duration = coco::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
 	class instrumentation_timer
 	{
 	public:
-		instrumentation_timer(const std::string& name = std::string{ "Coco Instrumentation Timer" }) : m_name(name)
+		instrumentation_timer(const std::string& name) : m_name(name)
 		{
 			start();
 		}
@@ -266,24 +299,28 @@ namespace coco
 			m_timepoint = now();
 		}
 
-		void reset()
-		{
-			m_time = 0;
-			m_stopped = false;
-			m_timepoint = now();
-		}
-
 		void stop()
 		{
 			if (!m_stopped)
 			{
-				m_stopped = true;
-				long long start = tp_cast(m_timepoint).time_since_epoch().count();
-				long long end = tp_cast(now()).time_since_epoch().count();
+				auto end_timepoint = clock_t::now();
 
-				m_time += (end - start);
-				instrumentor::get().write_profile({ m_name, start, end, std::hash<std::thread::id>{}(std::this_thread::get_id()) });
+				long long start = tp_cast(m_timepoint).time_since_epoch().count();
+				long long end = tp_cast(end_timepoint).time_since_epoch().count();
+
+				m_time = end - start;
+
+				size_t threadID = std::hash<std::thread::id>{}(std::this_thread::get_id());
+				instrumentor::get().write_profile({ m_name, start, end, threadID });
+				m_stopped = true;
 			}
+		}
+
+		bool complated_on_time(long long time) const noexcept
+		{
+			if (!m_stopped)
+				return false;
+			return time >= m_time;
 		}
 
 		long long get_time() const
@@ -297,9 +334,9 @@ namespace coco
 			return clock_t::now();
 		}
 
-		constexpr sch::time_point<clock_t, typename _Duration::type> tp_cast(const sch::time_point<clock_t>& tp)
+		constexpr sch::time_point<clock_t, typename time_units::microseconds::type> tp_cast(const sch::time_point<clock_t>& tp)
 		{
-			return sch::time_point_cast<typename _Duration::type>(tp);
+			return sch::time_point_cast<typename time_units::microseconds::type>(tp);
 		}
 
 		sch::time_point<clock_t> m_timepoint;
@@ -307,8 +344,288 @@ namespace coco
 		long long m_time = 0;
 		bool m_stopped = false;
 	};
-}
 
+	class timer_statistics
+	{
+	public:
+		void add_measurement(long long time)
+		{
+			m_measurements.push_back(time);
+		}
+
+		void clear_measurements()
+		{
+			m_measurements.clear();
+		}
+
+		double calculate_average() const
+		{
+			if (m_measurements.empty()) 
+				return 0.0;
+			long long sum = std::accumulate(m_measurements.begin(), m_measurements.end(), 0LL);
+			return static_cast<double>(sum) / m_measurements.size();
+		}
+
+		double calculate_variance() const
+		{
+			if (m_measurements.empty()) return 0.0;
+			double avg = calculate_average();
+			double variance = 0.0;
+			for (long long time : m_measurements)
+			{
+				variance += std::pow(time - avg, 2);
+			}
+			variance /= m_measurements.size();
+			return variance;
+		}
+
+		double calculate_standard_deviation() const
+		{
+			return std::sqrt(calculate_variance());
+		}
+
+		double calculate_median() const
+		{
+			if (m_measurements.empty()) 
+				return 0.0;
+			std::vector<long long> sorted_measurements = m_measurements;
+			std::sort(sorted_measurements.begin(), sorted_measurements.end());
+			size_t n = sorted_measurements.size();
+			if (n % 2 == 0)
+				return static_cast<double>(sorted_measurements[n / 2 - 1] + sorted_measurements[n / 2]) / 2.0;
+			else
+				return static_cast<double>(sorted_measurements[n / 2]);
+		}
+
+		long long get_min_value() const
+		{
+			if (m_measurements.empty()) 
+				return 0;
+			return *std::min_element(m_measurements.begin(), m_measurements.end());
+		}
+
+		long long get_max_value() const
+		{
+			if (m_measurements.empty()) 
+				return 0;
+			return *std::max_element(m_measurements.begin(), m_measurements.end());
+		}
+	
+	private:
+		std::vector<long long> m_measurements;
+	};
+
+	class timer_data_logger
+	{
+	public:
+		timer_data_logger() : m_stats(new timer_statistics()) {}
+
+		timer_data_logger(const timer_statistics& stats) : m_stats(new timer_statistics(stats)) {}
+
+		timer_data_logger(timer_statistics&& stats) noexcept : m_stats(new timer_statistics(std::move(stats))) {}
+
+		~timer_data_logger()
+		{
+			delete m_stats;
+		}
+
+		timer_statistics* get_statistics() const
+		{
+			return m_stats;
+		}
+
+		timer_data_logger& operator=(const timer_data_logger& other)
+		{
+			if (this != &other)
+			{
+				delete m_stats;
+				m_stats = new timer_statistics(*other.m_stats);
+			}
+			return *this;
+		}
+
+		timer_data_logger& operator=(timer_data_logger&& other) noexcept
+		{
+			if (this != &other)
+			{
+				delete m_stats;
+				m_stats = other.m_stats;
+				other.m_stats = nullptr;
+			}
+			return *this;
+		}
+
+		void add_measurement(long long time)
+		{
+			m_stats->add_measurement(time);
+		}
+
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		void log_statistics(const std::string& filename)
+		{
+			std::ofstream file(filename);
+			if (file.is_open())
+			{
+				file << "Statistics Summary:\n";
+				file << "-------------------\n";
+				file << "Average Time: " << m_stats->calculate_average() << ' ' << _Duration::name << "\n";
+				file << "Variance: " << m_stats->calculate_variance() << ' ' << _Duration::name << "\n";
+				file << "Standard Deviation: " << m_stats->calculate_standard_deviation() << ' ' << _Duration::name << "\n";
+				file << "Median Time: " << m_stats->calculate_median() << ' ' << _Duration::name << "\n";
+				file << "Minimum Time: " << m_stats->get_min_value() << ' ' << _Duration::name << "\n";
+				file << "Maximum Time: " << m_stats->get_max_value() << ' ' << _Duration::name << "\n";
+				file << "-------------------\n";
+				file.close();
+			}
+			else
+			{
+				COCO_ASSERT(false, "Failed to open file for writing.");
+			}
+		}
+
+	private:
+		timer_statistics* m_stats;
+	};
+
+	class multiple_timer_manager 
+	{
+	public:
+		multiple_timer_manager() {}
+
+		void add_and_start_timer(const std::string& timer_name) 
+		{
+			COCO_ASSERT(m_timers.find(timer_name) == m_timers.end(), "Timer already exists!");
+			m_timers[timer_name] = coco::timer<coco::time_units::microseconds>();
+		}
+
+		void stop_timer(const std::string& timer_name) 
+		{
+			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
+			m_timers[timer_name].stop();
+			m_data_logger.add_measurement(m_timers[timer_name].get_time());
+		}
+
+		void reset_timer(const std::string& timer_name) 
+		{
+			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
+			m_timers[timer_name].reset();
+		}
+
+		void pause_timer(const std::string& timer_name)
+		{
+			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
+			m_timers[timer_name].pause();
+		}
+
+		void resume_timer(const std::string& timer_name)
+		{
+			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
+			m_timers[timer_name].resume();
+		}
+
+		void remove_timer(const std::string& timer_name)
+		{
+			auto it = m_timers.find(timer_name);
+			COCO_ASSERT(it != m_timers.end(), "Timer not found!");
+			m_timers.erase(it);
+		}
+
+		void reset_all_timers() 
+		{
+			for (auto& timer : m_timers)
+				timer.second.reset();
+		}
+
+		void stop_all_timers() 
+		{
+			for (auto& timer : m_timers) 
+				timer.second.stop();
+		}
+
+		void log_statistics(const std::string& filename) 
+		{
+			m_data_logger.log_statistics<coco::time_units::microseconds>(filename);
+		}
+
+		bool is_timer_running(const std::string& timer_name) const 
+		{
+			if (m_timers.find(timer_name) != m_timers.end())
+				return !m_timers.at(timer_name).is_running();
+			return false;
+		}
+
+		long long get_elapsed_time(const std::string& timer_name) const
+		{
+			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
+			return m_timers.at(timer_name).get_time();
+		}
+
+		void rename_timer(const std::string& old_name, const std::string& new_name)
+		{
+			COCO_ASSERT(m_timers.find(new_name) == m_timers.end(), "New timer name already exists!");
+			auto it = m_timers.find(old_name);
+			COCO_ASSERT(it != m_timers.end(), "Timer not found!");
+
+			m_timers[new_name] = std::move(it->second);
+			m_timers.erase(it);
+		}
+
+	private:
+		std::unordered_map<std::string, coco::timer<coco::time_units::microseconds>> m_timers;
+		coco::timer_data_logger m_data_logger;
+	};
+
+
+	class timer_controller 
+	{
+	public:
+		void start_timer(coco::timer<coco::time_units::microseconds>& timer)
+		{
+			timer.start();
+		}
+
+		void stop_timer(coco::timer<coco::time_units::microseconds>& timer)
+		{
+			timer.stop();
+		}
+
+		void reset_timer(coco::timer<coco::time_units::microseconds>& timer)
+		{
+			timer.reset();
+		}
+
+		void pause_timer(coco::timer<coco::time_units::microseconds>& timer)
+		{
+			timer.pause();
+		}
+
+		void resume_timer(coco::timer<coco::time_units::microseconds>& timer)
+		{
+			timer.resume();
+		}
+
+		bool is_timer_running(const coco::timer<coco::time_units::microseconds>& timer) const
+		{
+			return timer.is_running();
+		}
+
+		bool is_timer_paused(const coco::timer<coco::time_units::microseconds>& timer) const
+		{
+			return timer.is_paused();
+		}
+
+		long long get_timer_time(const coco::timer<coco::time_units::microseconds>& timer) const
+		{
+			return timer.get_time();
+		}
+
+		void set_timer_print_state(coco::timer<coco::time_units::microseconds>& timer, bool state)
+		{
+			timer.set_print_state(state);
+		}
+	};
+
+}
 
 #define _COCO_CONCAT_H(x, y)	x##y
 #define _COCO_CONCAT(x, y)		_COCO_CONCAT_H(x,y)
@@ -335,8 +652,8 @@ namespace coco
 #define _COCO_FUNC_SIG "_COCO_FUNC_SIG unknown!"
 #endif
 
-#define COCO_SCOPE_TIMER()				coco::timer<coco::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)
-#define COCO_SCOPE_TIMER_NAMED(name)	coco::timer<coco::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name)
+#define COCO_SCOPE_TIMER()				coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)
+#define COCO_SCOPE_TIMER_NAMED(name)	coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name)
 
 #define COCO_PROFILE_BEGIN_SESSION(name, filepath)	coco::instrumentor::get().begin_session(name, filepath)
 #define COCO_PROFILE_END_SESSION()					coco::instrumentor::get().end_session()
