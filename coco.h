@@ -274,7 +274,7 @@ namespace coco
 		sch::time_point<clock_t> m_timepoint;
 		std::string m_name;
 		long long m_time = 0;
-		bool m_stopped = false;
+		bool m_stopped = true;
 		bool m_paused = false;
 		bool m_print_when_stopped = true;
 	};
@@ -487,40 +487,48 @@ namespace coco
 		timer_statistics* m_stats;
 	};
 
+	template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
 	class multiple_timer_manager 
 	{
 	public:
 		multiple_timer_manager() {}
 
+		~multiple_timer_manager()
+		{
+			for (auto& timer : m_timers)
+				delete timer.second;
+		}
+
 		void add_and_start_timer(const std::string& timer_name) 
 		{
 			COCO_ASSERT(m_timers.find(timer_name) == m_timers.end(), "Timer already exists!");
-			m_timers[timer_name] = coco::timer<coco::time_units::microseconds>();
+			m_timers[timer_name] = new coco::timer<_Duration>();
+			//m_timers[timer_name]->set_print_state(false);
 		}
 
 		void stop_timer(const std::string& timer_name) 
 		{
 			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			m_timers[timer_name].stop();
-			m_data_logger.add_measurement(m_timers[timer_name].get_time());
+			m_timers[timer_name]->stop();
+			m_data_logger.add_measurement(m_timers[timer_name]->get_time());
 		}
 
 		void reset_timer(const std::string& timer_name) 
 		{
 			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			m_timers[timer_name].reset();
+			m_timers[timer_name]->reset();
 		}
 
 		void pause_timer(const std::string& timer_name)
 		{
 			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			m_timers[timer_name].pause();
+			m_timers[timer_name]->pause();
 		}
 
 		void resume_timer(const std::string& timer_name)
 		{
 			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			m_timers[timer_name].resume();
+			m_timers[timer_name]->resume();
 		}
 
 		void remove_timer(const std::string& timer_name)
@@ -533,31 +541,38 @@ namespace coco
 		void reset_all_timers() 
 		{
 			for (auto& timer : m_timers)
-				timer.second.reset();
+				timer.second->reset();
 		}
 
 		void stop_all_timers() 
 		{
 			for (auto& timer : m_timers) 
-				timer.second.stop();
+				timer.second->stop();
+		}
+
+		coco::timer<_Duration>* get_timer(const std::string& timer_name)
+		{
+			auto it = m_timers.find(timer_name);
+			COCO_ASSERT(it != m_timers.end(), "Timer not found");
+			return m_timers.at(timer_name);
 		}
 
 		void log_statistics(const std::string& filename) 
 		{
-			m_data_logger.log_statistics<coco::time_units::microseconds>(filename);
+			m_data_logger.log_statistics<_Duration>(filename);
 		}
 
 		bool is_timer_running(const std::string& timer_name) const 
 		{
 			if (m_timers.find(timer_name) != m_timers.end())
-				return !m_timers.at(timer_name).is_running();
+				return !m_timers.at(timer_name)->is_running();
 			return false;
 		}
 
 		long long get_elapsed_time(const std::string& timer_name) const
 		{
 			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			return m_timers.at(timer_name).get_time();
+			return m_timers.at(timer_name)->get_time();
 		}
 
 		void rename_timer(const std::string& old_name, const std::string& new_name)
@@ -571,7 +586,7 @@ namespace coco
 		}
 
 	private:
-		std::unordered_map<std::string, coco::timer<coco::time_units::microseconds>> m_timers;
+		std::unordered_map<std::string, coco::timer<_Duration>*> m_timers;
 		coco::timer_data_logger m_data_logger;
 	};
 
@@ -579,47 +594,55 @@ namespace coco
 	class timer_controller 
 	{
 	public:
-		void start_timer(coco::timer<coco::time_units::microseconds>& timer)
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		void start_timer(coco::timer<_Duration>& timer)
 		{
 			timer.start();
 		}
-
-		void stop_timer(coco::timer<coco::time_units::microseconds>& timer)
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		void stop_timer(coco::timer<_Duration>& timer)
 		{
 			timer.stop();
 		}
 
-		void reset_timer(coco::timer<coco::time_units::microseconds>& timer)
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		void reset_timer(coco::timer<_Duration>& timer)
 		{
 			timer.reset();
 		}
 
-		void pause_timer(coco::timer<coco::time_units::microseconds>& timer)
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		void pause_timer(coco::timer<_Duration>& timer)
 		{
 			timer.pause();
 		}
 
-		void resume_timer(coco::timer<coco::time_units::microseconds>& timer)
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		void resume_timer(coco::timer<_Duration>& timer)
 		{
 			timer.resume();
 		}
 
-		bool is_timer_running(const coco::timer<coco::time_units::microseconds>& timer) const
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		bool is_timer_running(const coco::timer<_Duration>& timer) const
 		{
 			return timer.is_running();
 		}
 
-		bool is_timer_paused(const coco::timer<coco::time_units::microseconds>& timer) const
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		bool is_timer_paused(const coco::timer<_Duration>& timer) const
 		{
 			return timer.is_paused();
 		}
 
-		long long get_timer_time(const coco::timer<coco::time_units::microseconds>& timer) const
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		long long get_timer_time(const coco::timer<_Duration>& timer) const
 		{
 			return timer.get_time();
 		}
 
-		void set_timer_print_state(coco::timer<coco::time_units::microseconds>& timer, bool state)
+		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
+		void set_timer_print_state(coco::timer<_Duration>& timer, bool state)
 		{
 			timer.set_print_state(state);
 		}
@@ -652,9 +675,11 @@ namespace coco
 #define _COCO_FUNC_SIG "_COCO_FUNC_SIG unknown!"
 #endif
 
+// console
 #define COCO_SCOPE_TIMER()				coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)
 #define COCO_SCOPE_TIMER_NAMED(name)	coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name)
 
+// json
 #define COCO_PROFILE_BEGIN_SESSION(name, filepath)	coco::instrumentor::get().begin_session(name, filepath)
 #define COCO_PROFILE_END_SESSION()					coco::instrumentor::get().end_session()
 #define COCO_PROFILE_SCOPE(name)					coco::instrumentation_timer _COCO_ADD_COUNTER(timer)(name)
