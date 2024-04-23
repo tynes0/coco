@@ -23,6 +23,13 @@ namespace sch = std::chrono;
     } while (false)
 #endif // _DEBUG
 
+#ifdef _HAS_CXX17
+#define COCO_INLINE inline
+#else// _HAS_CXX17
+#define COCO_INLINE 
+#endif // _HAS_CXX17
+
+
 namespace coco
 {
 	using clock_t = sch::high_resolution_clock;
@@ -68,8 +75,8 @@ namespace coco
 #ifdef __cpp_concepts
 	namespace detail
 	{
-		template <class dur>
-		concept duration_type = std::_Is_any_of_v<dur, coco::time_units::nanoseconds, coco::time_units::microseconds, coco::time_units::milliseconds, coco::time_units::seconds, coco::time_units::minutes, coco::time_units::hours>;
+		template <class _Duration>
+		concept duration_type = std::_Is_any_of_v<_Duration, coco::time_units::nanoseconds, coco::time_units::microseconds, coco::time_units::milliseconds, coco::time_units::seconds, coco::time_units::minutes, coco::time_units::hours>;
 	}
 
 #define _COCO_ENABLE_IF_DURATION_T(dur)
@@ -78,6 +85,13 @@ namespace coco
 #define _COCO_ENABLE_IF_DURATION_T(dur) , std::enable_if_t<std::_Is_any_of_v<dur, coco::time_units::nanoseconds, coco::time_units::microseconds, coco::time_units::milliseconds, coco::time_units::seconds, coco::time_units::minutes, coco::time_units::hours>, int> = 0
 #define _COCO_CONCEPT_DURATION_T class
 #endif // __cpp_concepts
+
+	template <_COCO_CONCEPT_DURATION_T _From, _COCO_CONCEPT_DURATION_T _To _COCO_ENABLE_IF_DURATION_T(_From) _COCO_ENABLE_IF_DURATION_T(_To)>
+	long long duration_count_cast(long long value)
+	{
+		typename _From::type from_dur(value);
+		return sch::duration_cast<typename _To::type>(from_dur).count();
+	}
 
 	namespace detail
 	{
@@ -260,6 +274,12 @@ namespace coco
 			return m_time;
 		}
 
+		template <_COCO_CONCEPT_DURATION_T _To _COCO_ENABLE_IF_DURATION_T(_To)>
+		long long get_casted_time() const
+		{
+			return duration_count_cast<_Duration ,_To>(m_time);
+		}
+
 	private:
 		sch::time_point<clock_t> now()
 		{
@@ -278,6 +298,29 @@ namespace coco
 		bool m_paused = false;
 		bool m_print_when_stopped = true;
 	};
+
+	template <typename T>
+	struct is_timer : std::false_type {};
+
+	template <typename _Duration>
+	struct is_timer<timer<_Duration>> : std::true_type {};
+
+	template <typename T>
+	COCO_INLINE constexpr bool is_timer_v = is_timer<T>::value;
+
+#ifdef __cpp_concepts
+	namespace detail
+	{
+		template <class _Duration>
+		concept timer_type = is_timer_v<_Duration>;
+	}
+
+#define _COCO_ENABLE_IF_TIMER_T(dur)
+#define _COCO_CONCEPT_TIMER_T detail::timer_type
+#else // __cpp_concepts
+#define _COCO_ENABLE_IF_TIMER_T(dur) , std::enable_if_t<is_timer_v<_Duration>>, int> = 0
+#define _COCO_CONCEPT_TIMER_T class
+#endif // __cpp_concepts
 
 	class instrumentation_timer
 	{
@@ -328,15 +371,21 @@ namespace coco
 			return m_time;
 		}
 
+		template <_COCO_CONCEPT_DURATION_T _To _COCO_ENABLE_IF_DURATION_T(_To)>
+		long long get_casted_time() const
+		{
+			return duration_count_cast<time_units::milliseconds, _To>(m_time);
+		}
+
 	private:
 		sch::time_point<clock_t> now()
 		{
 			return clock_t::now();
 		}
 
-		constexpr sch::time_point<clock_t, typename time_units::microseconds::type> tp_cast(const sch::time_point<clock_t>& tp)
+		constexpr sch::time_point<clock_t, typename time_units::milliseconds::type> tp_cast(const sch::time_point<clock_t>& tp)
 		{
-			return sch::time_point_cast<typename time_units::microseconds::type>(tp);
+			return sch::time_point_cast<typename time_units::milliseconds::type>(tp);
 		}
 
 		sch::time_point<clock_t> m_timepoint;
@@ -468,12 +517,12 @@ namespace coco
 			{
 				file << "Statistics Summary:\n";
 				file << "-------------------\n";
-				file << "Average Time: " << m_stats->calculate_average() << ' ' << _Duration::name << "\n";
-				file << "Variance: " << m_stats->calculate_variance() << ' ' << _Duration::name << "\n";
-				file << "Standard Deviation: " << m_stats->calculate_standard_deviation() << ' ' << _Duration::name << "\n";
-				file << "Median Time: " << m_stats->calculate_median() << ' ' << _Duration::name << "\n";
-				file << "Minimum Time: " << m_stats->get_min_value() << ' ' << _Duration::name << "\n";
-				file << "Maximum Time: " << m_stats->get_max_value() << ' ' << _Duration::name << "\n";
+				file << "Average Time: "		<< m_stats->calculate_average()				<< ' ' << _Duration::name << "\n";
+				file << "Variance: "			<< m_stats->calculate_variance()			<< ' ' << _Duration::name << "\n";
+				file << "Standard Deviation: "	<< m_stats->calculate_standard_deviation()	<< ' ' << _Duration::name << "\n";
+				file << "Median Time: "			<< m_stats->calculate_median()				<< ' ' << _Duration::name << "\n";
+				file << "Minimum Time: "		<< m_stats->get_min_value()					<< ' ' << _Duration::name << "\n";
+				file << "Maximum Time: "		<< m_stats->get_max_value()					<< ' ' << _Duration::name << "\n";
 				file << "-------------------\n";
 				file.close();
 			}
@@ -503,7 +552,7 @@ namespace coco
 		{
 			COCO_ASSERT(m_timers.find(timer_name) == m_timers.end(), "Timer already exists!");
 			m_timers[timer_name] = new coco::timer<_Duration>();
-			//m_timers[timer_name]->set_print_state(false);
+			m_timers[timer_name]->set_print_state(false);
 		}
 
 		void stop_timer(const std::string& timer_name) 
@@ -590,59 +639,59 @@ namespace coco
 		coco::timer_data_logger m_data_logger;
 	};
 
-
 	class timer_controller 
 	{
 	public:
-		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		void start_timer(coco::timer<_Duration>& timer)
+		template <_COCO_CONCEPT_TIMER_T _Timer _COCO_ENABLE_IF_TIMER_T(_Timer)>
+		static void start_timer(_Timer& timer)
 		{
 			timer.start();
 		}
-		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		void stop_timer(coco::timer<_Duration>& timer)
+
+		template <_COCO_CONCEPT_TIMER_T _Timer _COCO_ENABLE_IF_TIMER_T(_Timer)>
+		static void stop_timer(_Timer& timer)
 		{
 			timer.stop();
 		}
 
-		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		void reset_timer(coco::timer<_Duration>& timer)
+		template <_COCO_CONCEPT_TIMER_T _Timer _COCO_ENABLE_IF_TIMER_T(_Timer)>
+		static void reset_timer(_Timer& timer)
 		{
 			timer.reset();
 		}
 
-		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		void pause_timer(coco::timer<_Duration>& timer)
+		template <_COCO_CONCEPT_TIMER_T _Timer _COCO_ENABLE_IF_TIMER_T(_Timer)>
+		static void pause_timer(_Timer& timer)
 		{
 			timer.pause();
 		}
 
-		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		void resume_timer(coco::timer<_Duration>& timer)
+		template <_COCO_CONCEPT_TIMER_T _Timer _COCO_ENABLE_IF_TIMER_T(_Timer)>
+		static void resume_timer(_Timer& timer)
 		{
 			timer.resume();
 		}
 
-		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		bool is_timer_running(const coco::timer<_Duration>& timer) const
+		template <_COCO_CONCEPT_TIMER_T _Timer _COCO_ENABLE_IF_TIMER_T(_Timer)>
+		static bool is_timer_running(const _Timer& timer)
 		{
 			return timer.is_running();
 		}
 
-		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		bool is_timer_paused(const coco::timer<_Duration>& timer) const
+		template <_COCO_CONCEPT_TIMER_T _Timer _COCO_ENABLE_IF_TIMER_T(_Timer)>
+		static bool is_timer_paused(const _Timer& timer)
 		{
 			return timer.is_paused();
 		}
 
-		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		long long get_timer_time(const coco::timer<_Duration>& timer) const
+		template <_COCO_CONCEPT_TIMER_T _Timer _COCO_ENABLE_IF_TIMER_T(_Timer)>
+		static long long get_timer_time(const _Timer& timer)
 		{
 			return timer.get_time();
 		}
 
-		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		void set_timer_print_state(coco::timer<_Duration>& timer, bool state)
+		template <_COCO_CONCEPT_TIMER_T _Timer _COCO_ENABLE_IF_TIMER_T(_Timer)>
+		static void set_timer_print_state(_Timer& timer, bool state)
 		{
 			timer.set_print_state(state);
 		}
@@ -675,10 +724,6 @@ namespace coco
 #define _COCO_FUNC_SIG "_COCO_FUNC_SIG unknown!"
 #endif
 
-// console
-#define COCO_SCOPE_TIMER()				coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)
-#define COCO_SCOPE_TIMER_NAMED(name)	coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name)
-
 // json
 #define COCO_PROFILE_BEGIN_SESSION(name, filepath)	coco::instrumentor::get().begin_session(name, filepath)
 #define COCO_PROFILE_END_SESSION()					coco::instrumentor::get().end_session()
@@ -691,5 +736,15 @@ namespace coco
 #define COCO_PROFILE_FUNCTION()
 #endif  // COCO_NO_PROFILE
 
+// console
+#define COCO_SCOPE_TIMER()					coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)
+#define COCO_SCOPE_TIMER_NAMED(name)		coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name)
+
+#define COCO_BEGIN_TIMER(timer_name)		coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name)
+#define COCO_END_TIMER(timer_name)			(_COCO_CONCAT(__coco_time_var_, timer_name).stop())
+#define COCO_GET_TIMER_VALUE(timer_name)	(_COCO_CONCAT(__coco_time_var_, timer_name).get_time())
+
 #undef _COCO_ENABLE_IF_DURATION_T
 #undef _COCO_CONCEPT_DURATION_T
+#undef _COCO_ENABLE_IF_TIMER_T
+#undef _COCO_CONCEPT_TIMER_T
