@@ -36,6 +36,8 @@ namespace sch = std::chrono;
             std::abort();																			\
         }																							\
     } while (false)
+#else //_DEBUG
+#define COCO_ASSERT(condition, message)
 #endif // _DEBUG
 
 #if _HAS_CXX17
@@ -130,41 +132,51 @@ namespace coco
 
 		void begin_session(const std::string& name, const std::string& filepath = "results.json")
 		{
-			m_output_stream.open(filepath);
-			write_header();
-			m_current_session = new detail::instrumentation_session{ name };
-			m_active = true;
+			if (!m_active)
+			{
+				m_output_stream.open(filepath);
+				write_header();
+				m_current_session = new detail::instrumentation_session{ name };
+				m_active = true;
+			}
 		}
 
 		void end_session()
 		{
-			write_footer();
-			m_output_stream.close();
-			delete m_current_session;
-			m_current_session = nullptr;
-			m_profile_count = 0;
-			m_active = false;
+			if (m_active)
+			{
+				write_footer();
+				m_output_stream.close();
+				delete m_current_session;
+				m_current_session = nullptr;
+				m_profile_count = 0;
+				m_active = false;
+			}
 		}
 
 		void write_profile(const detail::profile_result& result)
 		{
-			if (m_profile_count++ > 0)
-				m_output_stream << ",";
+			COCO_ASSERT(m_active, "write_profile() called on inactive instrumentor");
+			if (m_active)
+			{
+				if (m_profile_count++ > 0)
+					m_output_stream << ",";
 
-			std::string name = result.name;
-			std::replace(name.begin(), name.end(), '"', '\'');
+				std::string name = result.name;
+				std::replace(name.begin(), name.end(), '"', '\'');
 
-			m_output_stream << "{\"cat\":\"function\",";
-			m_output_stream << "\"dur\":" << (result.end - result.start) << ',';
-			m_output_stream << "\"name\":\"" << name << "\",";
-			m_output_stream << "\"ph\":\"X\",";
-			m_output_stream << "\"pid\":0,";
-			m_output_stream << "\"tid\":" << result.threadID << ",";
-			m_output_stream << "\"ts\":" << result.start << "}";
+				m_output_stream << "{\"cat\":\"function\",";
+				m_output_stream << "\"dur\":" << (result.end - result.start) << ',';
+				m_output_stream << "\"name\":\"" << name << "\",";
+				m_output_stream << "\"ph\":\"X\",";
+				m_output_stream << "\"pid\":0,";
+				m_output_stream << "\"tid\":" << result.threadID << ",";
+				m_output_stream << "\"ts\":" << result.start << "}";
 
-			m_output_stream.flush();
+				m_output_stream.flush();
+			}
 		}
-
+	private:
 		void write_header()
 		{
 			m_output_stream << "{\"otherData\": {},\"traceEvents\":[";
@@ -176,7 +188,7 @@ namespace coco
 			m_output_stream << "]}";
 			m_output_stream.flush();
 		}
-
+	public:
 		static instrumentor& get()
 		{
 			static instrumentor instance;
@@ -217,7 +229,8 @@ namespace coco
 
 		void pause()
 		{
-			if (!m_paused)
+			COCO_ASSERT(!m_stopped, "pause() called on inactive timer.");
+			if (!m_stopped && !m_paused)
 			{
 				m_paused = true;
 				long long start = tp_cast(m_timepoint).time_since_epoch().count();
@@ -425,20 +438,25 @@ namespace coco
 		double calculate_average() const
 		{
 			if (m_measurements.empty())
+			{
+				COCO_ASSERT(false, "no measurements found");
 				return 0.0;
+			}
 			long long sum = std::accumulate(m_measurements.begin(), m_measurements.end(), 0LL);
 			return static_cast<double>(sum) / m_measurements.size();
 		}
 
 		double calculate_variance() const
 		{
-			if (m_measurements.empty()) return 0.0;
+			if (m_measurements.empty())
+			{
+				COCO_ASSERT(false, "no measurements found");
+				return 0.0;
+			}
 			double avg = calculate_average();
 			double variance = 0.0;
 			for (long long time : m_measurements)
-			{
 				variance += std::pow(time - avg, 2);
-			}
 			variance /= m_measurements.size();
 			return variance;
 		}
@@ -451,7 +469,10 @@ namespace coco
 		double calculate_median() const
 		{
 			if (m_measurements.empty())
+			{
+				COCO_ASSERT(false, "no measurements found");
 				return 0.0;
+			}
 			std::vector<long long> sorted_measurements = m_measurements;
 			std::sort(sorted_measurements.begin(), sorted_measurements.end());
 			size_t n = sorted_measurements.size();
@@ -464,14 +485,20 @@ namespace coco
 		long long get_min_value() const
 		{
 			if (m_measurements.empty())
+			{
+				COCO_ASSERT(false, "no measurements found");
 				return 0;
+			}
 			return *std::min_element(m_measurements.begin(), m_measurements.end());
 		}
 
 		long long get_max_value() const
 		{
 			if (m_measurements.empty())
+			{
+				COCO_ASSERT(false, "no measurements found");
 				return 0;
+			}
 			return *std::max_element(m_measurements.begin(), m_measurements.end());
 		}
 
@@ -565,41 +592,48 @@ namespace coco
 
 		void add_and_start_timer(const std::string& timer_name)
 		{
-			COCO_ASSERT(m_timers.find(timer_name) == m_timers.end(), "Timer already exists!");
-			m_timers[timer_name] = new coco::timer<_Duration>();
-			m_timers[timer_name]->set_print_state(false);
+			if (m_timers.find(timer_name) == m_timers.end())
+				m_timers[timer_name] = new coco::timer<_Duration>();
+			COCO_ASSERT(false, "Timer already exists!");
 		}
 
 		void stop_timer(const std::string& timer_name)
 		{
-			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			m_timers[timer_name]->stop();
-			m_data_logger.add_measurement(m_timers[timer_name]->get_time());
+			if (m_timers.find(timer_name) != m_timers.end())
+			{
+				m_timers[timer_name]->stop();
+				m_data_logger.add_measurement(m_timers[timer_name]->get_time());
+			}
+			COCO_ASSERT(false, "Timer not found!");
 		}
 
 		void reset_timer(const std::string& timer_name)
 		{
-			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			m_timers[timer_name]->reset();
+			if (m_timers.find(timer_name) != m_timers.end())
+				m_timers[timer_name]->reset();
+			COCO_ASSERT(false, "Timer not found!");
 		}
 
 		void pause_timer(const std::string& timer_name)
 		{
-			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			m_timers[timer_name]->pause();
+			if (m_timers.find(timer_name) != m_timers.end())
+				m_timers[timer_name]->pause();
+			COCO_ASSERT(false, "Timer not found!");
 		}
 
 		void resume_timer(const std::string& timer_name)
 		{
-			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			m_timers[timer_name]->resume();
+			if (m_timers.find(timer_name) != m_timers.end())
+				m_timers[timer_name]->resume();
+			COCO_ASSERT(false, "Timer not found!");
 		}
 
 		void remove_timer(const std::string& timer_name)
 		{
 			auto it = m_timers.find(timer_name);
-			COCO_ASSERT(it != m_timers.end(), "Timer not found!");
-			m_timers.erase(it);
+			if (it != m_timers.end())
+				m_timers.erase(it);
+			COCO_ASSERT(false, "Timer not found!");
 		}
 
 		void reset_all_timers()
@@ -617,8 +651,10 @@ namespace coco
 		coco::timer<_Duration>* get_timer(const std::string& timer_name)
 		{
 			auto it = m_timers.find(timer_name);
-			COCO_ASSERT(it != m_timers.end(), "Timer not found");
-			return m_timers.at(timer_name);
+			if (it != m_timers.end())
+				return m_timers.at(timer_name);
+			COCO_ASSERT(false, "Timer not found");
+			return nullptr;
 		}
 
 		void log_statistics(const std::string& filename)
@@ -630,23 +666,31 @@ namespace coco
 		{
 			if (m_timers.find(timer_name) != m_timers.end())
 				return !m_timers.at(timer_name)->is_running();
+			COCO_ASSERT(false, "Timer not found!");
 			return false;
 		}
 
 		long long get_elapsed_time(const std::string& timer_name) const
 		{
-			COCO_ASSERT(m_timers.find(timer_name) != m_timers.end(), "Timer not found!");
-			return m_timers.at(timer_name)->get_time();
+			if (m_timers.find(timer_name) != m_timers.end())
+				return m_timers.at(timer_name)->get_time();
+			COCO_ASSERT(false, "Timer not found!");
+			return 0;
 		}
 
 		void rename_timer(const std::string& old_name, const std::string& new_name)
 		{
-			COCO_ASSERT(m_timers.find(new_name) == m_timers.end(), "New timer name already exists!");
-			auto it = m_timers.find(old_name);
-			COCO_ASSERT(it != m_timers.end(), "Timer not found!");
-
-			m_timers[new_name] = std::move(it->second);
-			m_timers.erase(it);
+			if (m_timers.find(new_name) == m_timers.end())
+			{
+				auto it = m_timers.find(old_name);
+				if (it != m_timers.end())
+				{
+					m_timers[new_name] = std::move(it->second);
+					m_timers.erase(it);
+				}
+				COCO_ASSERT(false, "Timer not found!");
+			}
+			COCO_ASSERT(false, "New timer name already exists!");
 		}
 
 	private:
@@ -752,13 +796,13 @@ namespace coco
 #endif  // COCO_NO_PROFILE
 
 // console
-#define COCO_SCOPE_TIMER()						coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_){ "Coco Timer", true }
-#define COCO_SCOPE_TIMER_NAMED(name)			coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name, true)
+#define COCO_SCOPE_TIMER()							coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_){ "Coco Timer", true }
+#define COCO_SCOPE_TIMER_NAMED(name)				coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name, true)
 
-#define COCO_BEGIN_TIMER_PRINTABLE(timer_name)	coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name){ "Coco Timer", true }
-#define COCO_BEGIN_TIMER(timer_name)			coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name)
-#define COCO_END_TIMER(timer_name)				((_COCO_CONCAT(__coco_time_var_, timer_name)).stop())
-#define COCO_GET_TIMER_VALUE(timer_name)		((_COCO_CONCAT(__coco_time_var_, timer_name)).get_time())
+#define COCO_BEGIN_TIMER_PRINTABLE(timer_name)		coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name){ "Coco Timer", true }
+#define COCO_BEGIN_TIMER(timer_name)				coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name)
+#define COCO_END_TIMER(timer_name)					((_COCO_CONCAT(__coco_time_var_, timer_name)).stop())
+#define COCO_GET_TIMER_VALUE(timer_name)			((_COCO_CONCAT(__coco_time_var_, timer_name)).get_time())
 
 #undef _COCO_ENABLE_IF_DURATION_T
 #undef _COCO_CONCEPT_DURATION_T
