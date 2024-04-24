@@ -21,6 +21,7 @@
 #include <numeric>
 #include <cassert>
 #include <unordered_map>
+#include <algorithm>
 
 namespace sch = std::chrono;
 
@@ -37,7 +38,7 @@ namespace sch = std::chrono;
     } while (false)
 #endif // _DEBUG
 
-#ifdef _HAS_CXX17
+#if _HAS_CXX17
 #define COCO_INLINE inline
 #else// _HAS_CXX17
 #define COCO_INLINE 
@@ -329,10 +330,10 @@ namespace coco
 		concept timer_type = is_timer_v<_Duration>;
 	}
 
-#define _COCO_ENABLE_IF_TIMER_T(dur)
+#define _COCO_ENABLE_IF_TIMER_T(_Timer)
 #define _COCO_CONCEPT_TIMER_T detail::timer_type
 #else // __cpp_concepts
-#define _COCO_ENABLE_IF_TIMER_T(dur) , std::enable_if_t<is_timer_v<_Duration>>, int> = 0
+#define _COCO_ENABLE_IF_TIMER_T(_Timer) , std::enable_if_t<is_timer_v<_Timer>, int> = 0
 #define _COCO_CONCEPT_TIMER_T class
 #endif // __cpp_concepts
 
