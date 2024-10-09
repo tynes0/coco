@@ -564,7 +564,7 @@ namespace coco
 			{
 				file << "Statistics Summary:\n";
 				file << "-------------------\n";
-				file << "Number of attempts: " << m_stats->get_measurement_count() << "times\n";
+				file << "Number of attempts: " << m_stats->get_measurement_count() << " times\n";
 				file << "Average Time: " << m_stats->calculate_average() << ' ' << _Duration::name << "\n";
 				file << "Variance: " << m_stats->calculate_variance() << ' ' << _Duration::name << "\n";
 				file << "Standard Deviation: " << m_stats->calculate_standard_deviation() << ' ' << _Duration::name << "\n";
