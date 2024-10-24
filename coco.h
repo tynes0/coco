@@ -202,6 +202,8 @@ namespace coco
 		bool m_active;
 	};
 
+	struct dont_start {};
+
 	template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
 	class timer
 	{
@@ -209,6 +211,13 @@ namespace coco
 		timer(const std::string& name = std::string{ "Coco Timer" }, bool print_state = false) : m_name(name), m_print_when_stopped(print_state)
 		{
 			start();
+		}
+
+		timer(dont_start) : m_name(std::string{ "Coco Timer" }), m_print_when_stopped(false)
+		{
+			m_time = 0;
+			m_paused = false;
+			m_stopped = true;
 		}
 
 		~timer()
@@ -356,6 +365,12 @@ namespace coco
 		instrumentation_timer(const std::string& name) : m_name(name)
 		{
 			start();
+		}
+
+		instrumentation_timer(const std::string& name, dont_start) : m_name(name)
+		{
+			m_time = 0;
+			m_stopped = true;
 		}
 
 		~instrumentation_timer()
@@ -791,9 +806,9 @@ namespace coco
 
 // json
 #define COCO_PROFILE_BEGIN_SESSION(name, filepath)	coco::instrumentor::get().begin_session(name, filepath)
-#define COCO_PROFILE_END_SESSION()			coco::instrumentor::get().end_session()
-#define COCO_PROFILE_SCOPE(name)			coco::instrumentation_timer _COCO_ADD_COUNTER(timer)(name)
-#define COCO_PROFILE_FUNCTION()				COCO_PROFILE_SCOPE(_COCO_FUNC_SIG)
+#define COCO_PROFILE_END_SESSION()					coco::instrumentor::get().end_session()
+#define COCO_PROFILE_SCOPE(name)					coco::instrumentation_timer _COCO_ADD_COUNTER(timer)(name)
+#define COCO_PROFILE_FUNCTION()						COCO_PROFILE_SCOPE(_COCO_FUNC_SIG)
 #else // COCO_NO_PROFILE
 #define COCO_PROFILE_BEGIN_SESSION(name, filepath)
 #define COCO_PROFILE_END_SESSION()
@@ -802,13 +817,13 @@ namespace coco
 #endif  // COCO_NO_PROFILE
 
 // console
-#define COCO_SCOPE_TIMER()				coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_){ "Coco Timer", true }
-#define COCO_SCOPE_TIMER_NAMED(name)			coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name, true)
+#define COCO_SCOPE_TIMER()					coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_){ "Coco Timer", true }
+#define COCO_SCOPE_TIMER_NAMED(name)				coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name, true)
 
-#define COCO_BEGIN_TIMER_PRINTABLE(timer_name)		coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name){ "Coco Timer", true }
-#define COCO_BEGIN_TIMER(timer_name)			coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name)
-#define COCO_END_TIMER(timer_name)			((_COCO_CONCAT(__coco_time_var_, timer_name)).stop())
-#define COCO_GET_TIMER_VALUE(timer_name)		((_COCO_CONCAT(__coco_time_var_, timer_name)).get_time())
+#define COCO_BEGIN_TIMER_PRINTABLE(timer_name)			coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name){ "Coco Timer", true }
+#define COCO_BEGIN_TIMER(timer_name)				coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name)
+#define COCO_END_TIMER(timer_name)				((_COCO_CONCAT(__coco_time_var_, timer_name)).stop())
+#define COCO_GET_TIMER_VALUE(timer_name)			((_COCO_CONCAT(__coco_time_var_, timer_name)).get_time())
 
 #undef _COCO_ENABLE_IF_DURATION_T
 #undef _COCO_CONCEPT_DURATION_T
