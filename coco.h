@@ -778,6 +778,22 @@ namespace coco
 		}
 	};
 
+	template <class FunT, class ...Args>
+	void measure(size_t test_count, const std::filesystem::path& filepath, FunT fun, Args&&... args)
+	{
+		timer ctimer(dont_start{});
+		timer_data_logger measurement_stats;
+		for (size_t i = 0; i < test_count; ++i)
+		{
+			ctimer.start();
+			fun(args...);
+			ctimer.stop();
+			measurement_stats.add_measurement(ctimer.get_time());
+		}
+		measurement_stats.log_statistics(filepath);
+	}
+
+
 }
 
 #define _COCO_CONCAT_H(x, y)	x##y
