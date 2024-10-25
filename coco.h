@@ -21,6 +21,7 @@
 #include <numeric>
 #include <cassert>
 #include <unordered_map>
+#include <filesystem>
 #include <algorithm>
 
 namespace sch = std::chrono;
@@ -572,9 +573,9 @@ namespace coco
 		}
 
 		template <_COCO_CONCEPT_DURATION_T _Duration = coco::time_units::microseconds _COCO_ENABLE_IF_DURATION_T(_Duration)>
-		void log_statistics(const std::string& filename)
+		void log_statistics(const std::filesystem::path& filepath)
 		{
-			std::ofstream file(filename);
+			std::ofstream file(filepath);
 			if (file.is_open())
 			{
 				file << "Statistics Summary:\n";
@@ -678,9 +679,9 @@ namespace coco
 			return nullptr;
 		}
 
-		void log_statistics(const std::string& filename)
+		void log_statistics(const std::filesystem::path& filepath)
 		{
-			m_data_logger.log_statistics<_Duration>(filename);
+			m_data_logger.log_statistics<_Duration>(filepath);
 		}
 
 		bool is_timer_running(const std::string& timer_name) const
@@ -817,12 +818,12 @@ namespace coco
 #endif  // COCO_NO_PROFILE
 
 // console
-#define COCO_SCOPE_TIMER()					coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_){ "Coco Timer", true }
+#define COCO_SCOPE_TIMER()							coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_){ "Coco Timer", true }
 #define COCO_SCOPE_TIMER_NAMED(name)				coco::timer<coco::time_units::microseconds> _COCO_ADD_COUNTER(__coco_timer_var_)(name, true)
 
-#define COCO_BEGIN_TIMER_PRINTABLE(timer_name)			coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name){ "Coco Timer", true }
+#define COCO_BEGIN_TIMER_PRINTABLE(timer_name)		coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name){ "Coco Timer", true }
 #define COCO_BEGIN_TIMER(timer_name)				coco::timer<coco::time_units::microseconds> _COCO_CONCAT(__coco_time_var_, timer_name)
-#define COCO_END_TIMER(timer_name)				((_COCO_CONCAT(__coco_time_var_, timer_name)).stop())
+#define COCO_END_TIMER(timer_name)					((_COCO_CONCAT(__coco_time_var_, timer_name)).stop())
 #define COCO_GET_TIMER_VALUE(timer_name)			((_COCO_CONCAT(__coco_time_var_, timer_name)).get_time())
 
 #undef _COCO_ENABLE_IF_DURATION_T
