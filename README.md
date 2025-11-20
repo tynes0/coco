@@ -122,7 +122,7 @@ int main() {
 
 ## License
 
-This library is released under the **Apache License 2.0**.
+This library is released under the **MIT License**.
 See the `LICENSE` file for more details.
 
 ## Author
