@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <filesystem>
 #include <algorithm>
+#include <mutex>
 
 namespace sch = std::chrono;
 
@@ -157,6 +158,7 @@ namespace coco
 
 		void write_profile(const detail::profile_result& result)
 		{
+			std::lock_guard<std::mutex> lock(m_lock);
 			COCO_ASSERT(m_active, "write_profile() called on inactive instrumentor");
 			if (m_active)
 			{
@@ -201,6 +203,7 @@ namespace coco
 		std::ofstream m_output_stream;
 		int m_profile_count;
 		bool m_active;
+		std::mutex m_lock;
 	};
 
 	struct dont_start {};
