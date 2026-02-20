@@ -91,17 +91,20 @@ namespace coco
 		};
 	}
 
+template <typename T, typename... U>
+constexpr bool is_any_of_v = (std::is_same_v<T, U> || ...);
+
 #ifdef __cpp_concepts
 	namespace detail
 	{
 		template <class _Duration>
-		concept duration_type = std::_Is_any_of_v<_Duration, coco::time_units::nanoseconds, coco::time_units::microseconds, coco::time_units::milliseconds, coco::time_units::seconds, coco::time_units::minutes, coco::time_units::hours>;
+		concept duration_type = is_any_of_v<_Duration, coco::time_units::nanoseconds, coco::time_units::microseconds, coco::time_units::milliseconds, coco::time_units::seconds, coco::time_units::minutes, coco::time_units::hours>;
 	}
 
 #define _COCO_ENABLE_IF_DURATION_T(dur)
 #define _COCO_CONCEPT_DURATION_T detail::duration_type
 #else // __cpp_concepts
-#define _COCO_ENABLE_IF_DURATION_T(dur) , std::enable_if_t<std::_Is_any_of_v<dur, coco::time_units::nanoseconds, coco::time_units::microseconds, coco::time_units::milliseconds, coco::time_units::seconds, coco::time_units::minutes, coco::time_units::hours>, int> = 0
+#define _COCO_ENABLE_IF_DURATION_T(dur) , std::enable_if_t<is_any_of_v<dur, coco::time_units::nanoseconds, coco::time_units::microseconds, coco::time_units::milliseconds, coco::time_units::seconds, coco::time_units::minutes, coco::time_units::hours>, int> = 0
 #define _COCO_CONCEPT_DURATION_T class
 #endif // __cpp_concepts
 
